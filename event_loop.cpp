@@ -33,11 +33,11 @@ Eventloop:: add_fd(int fd, uint32_t events, EventCallback cb)
         return false;
     }
 
-    epoll_event ev{};
+    epoll_event ev{};        //在这里创建ev 而后添加
     ev.events = events;
     ev.data.fd = fd;
 
-    if (::epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, fd, &ev) == -1) {
+    if (::epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, fd, &ev) == -1) {   //epoll_ctl
         std::cerr << "epoll_ctl ADD fd=" << fd
                   << " failed: " << std::strerror(errno) << "\n";
         return false;
@@ -49,12 +49,32 @@ Eventloop:: add_fd(int fd, uint32_t events, EventCallback cb)
 
 Eventloop :: mod_fd(int fd, uint32_t events , EventCallback cb)
 {
+    if (!callbacks_.count(fd))  //若没使用过则报错
+    {
+        std::cerr << "EventLoop::mod_fd: fd " << fd
+                  << " not registered\n";
+        return false;
+    }
 
+        epoll_event ev{};
+        ev.events = events;
+        ev.data.fd = fd;
+
+        if (::epoll_ctl(epoll_fd_, EPOLL_CTL_MOD, fd, &ev) == -1)
+         {
+        std::cerr << "epoll_ctl MOD fd=" << fd
+                  << " failed: " << std::strerror(errno) << "\n";
+        return false;
+        }
+
+
+    return true;
+    
 }
 
 Eventloop :: del_fd(int fd)
 {
-
+    if()
 }
 Eventloop :: run()
 {
@@ -65,7 +85,7 @@ Eventloop :: run()
 
         if(n == -1)
         {
-
+            perror()
         }
         else if(n == 0)
         {
@@ -90,7 +110,7 @@ Eventloop :: run()
 
 
 
-Eventloop :: stop()
+Eventloop :: stop()   //注 若这里的事件循环在epoll_wait 中阻塞 stop则不会唤醒它
 {
-
+    running_ = false;
 }
