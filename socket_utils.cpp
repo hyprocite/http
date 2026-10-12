@@ -1,5 +1,6 @@
 #include "socket_utils.hpp"
-
+#include<cstdio>
+#include <iostream>
 #include <cerrno>
 #include <cstring>
 #include <fcntl.h>
@@ -10,7 +11,7 @@
 int set_nonblocking(int fd) {
     int flags = fcntl(fd, F_GETFL, 0);
     if (flags == -1) {
-        perror("fcntl F_GETFL");
+        std::cerr << "fcntl F_GETFL failed: " << std::strerror(errno) << "\n";
         return -1;
     }
     if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1) {
@@ -21,7 +22,7 @@ int set_nonblocking(int fd) {
 }
 
 
-int create_listen_socket(uint16_t port , int backlog = 128)
+int create_listen_socket(uint16_t port , int backlog)
 {
     int listen_fd = socket(AF_INET, SOCK_STREAM, 0);   //监听socket
     if (listen_fd == -1) {

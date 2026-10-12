@@ -6,10 +6,10 @@
 
 class Eventloop
 {
-    public
+public:
     using EventCallback = std::function<void(int fd, uint32_t events)>;
-    EventLoop();
-    ~EventLoop();
+    Eventloop();
+    ~Eventloop();
     bool add_fd(int fd, uint32_t events, EventCallback cb);
     bool mod_fd(int fd, uint32_t events);
     bool del_fd(int fd);
@@ -20,4 +20,4 @@ private:
     bool running_;    //运行或终止的标志位
     std::unordered_map<int, EventCallback> callbacks_;  //回调fd
     std::vector<epoll_event> events_;   
-}
+};

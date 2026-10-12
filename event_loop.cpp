@@ -7,12 +7,11 @@
 #include <iostream>
 
 
-Eventloop::Eventloop():epoll_fd_(-1), running_(false),__event(64) //构造函数, epoll create
+Eventloop::Eventloop():epoll_fd_(-1), running_(false),events_(64) //构造函数, epoll create
 {
     epoll_fd_ = ::epoll_create1(0);   
     if (epoll_fd_ == -1) {
-        throw std::runtime_error(
-            std::string("epoll_create1 failed: ") + std::strerror(errno));
+        throw std::runtime_error(std::string("epoll_create1 failed: ") + std::strerror(errno));
         }
 }
 
@@ -24,7 +23,7 @@ Eventloop::~Eventloop()
 }
 }
 
-Eventloop:: add_fd(int fd, uint32_t events, EventCallback cb)
+bool Eventloop::add_fd(int fd, uint32_t events, EventCallback cb)
 {
     //逻辑， 先检查fd是否使用过， 防止回调被覆盖
     if (callbacks_.count(fd)) {
@@ -47,7 +46,7 @@ Eventloop:: add_fd(int fd, uint32_t events, EventCallback cb)
     return true;
 }
 
-Eventloop :: mod_fd(int fd, uint32_t events , EventCallback cb)
+bool Eventloop :: mod_fd(int fd, uint32_t events )
 {
     if (!callbacks_.count(fd))  //若没使用过则报错
     {
@@ -72,20 +71,34 @@ Eventloop :: mod_fd(int fd, uint32_t events , EventCallback cb)
     
 }
 
-Eventloop :: del_fd(int fd)
+bool Eventloop :: del_fd(int fd)
 {
-    if()
+    if(!callbacks_.count(fd))
+    {
+        std::cerr << "EventLoop::del_fd: fd " << fd
+                  << " not registered\n";
+        return false;
+    }
+    if(::epoll_ctl(epoll_fd_, EPOLL_CTL_DEL, fd, nullptr) == -1)
+    {
+        std::cerr << "EventLoop::del_fd: fd " << fd
+                  << " failed to delete\n";
+        return false;
+    }
+    callbacks_.erase(fd);
+    return true;
 }
-Eventloop :: run()
+
+void Eventloop :: run()
 {
     running_ = true;
     while(running_)
     {
-        int n = epoll_wait(epoll_fd_,events_.data(), static_cast<int>(events_.size()));
+            int n = epoll_wait(epoll_fd_,events_.data(), static_cast<int>(events_.size()), -1);  //阻塞等待事件发生
 
         if(n == -1)
         {
-            perror()
+         //   perror();
         }
         else if(n == 0)
         {
@@ -93,13 +106,13 @@ Eventloop :: run()
         }
         else
         {
-            for(int i = 0 ; i < n,i++)   //整体逻辑，有事件，取出，执行
+            for(int i = 0 ; i < n;i++)   //整体逻辑，有事件，取出，执行
             {
                 int fd = events_[i].data.fd;
-                uint32_ ev = events_[i].events;
+                uint32_t ev = events_[i].events;
                 EventCallback cb;
                 auto it = callbacks_.find(fd); //取出键值对cb
-                if(it ! = callbacks_.end())
+                if(it != callbacks_.end())
                 {
                     cb = it-> second; // 若不是
                 }
@@ -110,7 +123,7 @@ Eventloop :: run()
 
 
 
-Eventloop :: stop()   //注 若这里的事件循环在epoll_wait 中阻塞 stop则不会唤醒它
+void Eventloop :: stop()   //注 若这里的事件循环在epoll_wait 中阻塞 stop则不会唤醒它
 {
     running_ = false;
 }
