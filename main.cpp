@@ -1,5 +1,6 @@
 #include "event_loop.hpp"
 #include "socket_utils.hpp"
+#include "connection.hpp"
 
 #include <arpa/inet.h>
 #include <cerrno>
@@ -9,7 +10,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <vector>
-
+#include<unordered_map>
 int main() {
     // 1. 创建监听 socket（内部已 bind + listen + 非阻塞）
     constexpr uint16_t kPort = 8080;
@@ -22,8 +23,8 @@ int main() {
     std::cout << "服务器启动，监听 " << kPort << " 端口...\n";
 
     // 2. 创建事件循环
-    EventLoop loop;
-
+    Eventloop loop;
+    std::unordered_map<int,Connection> connetions;
     // 3. 注册监听 socket 的回调：有新连接时循环 accept
     loop.add_fd(listen_fd, EPOLLIN,
                 [&loop, listen_fd](int, uint32_t) {
@@ -61,51 +62,21 @@ int main() {
                       << " (fd=" << client_fd << ")\n";
 
             // 为新客户端注册回调
-            loop.add_fd(client_fd, EPOLLIN,
-                        [&loop](int fd, uint32_t) {
-                std::vector<char> buffer(1024);
-                bool should_close = false;
+           auto conn = std::make_shared<Connection>(&loop, client_fd);
 
-                // 循环读，直到 EAGAIN
-                while (true) {
-                    ssize_t n = ::recv(fd, buffer.data(),
-                                       buffer.size() - 1, 0);
-                    if (n > 0) {
-                        buffer[n] = '\0';
-                        std::cout << "收到(fd=" << fd << "): "
-                                  << buffer.data() << "\n";
-                        // 回显
-                        ssize_t sent = send_all(fd, buffer.data(),
-                                                static_cast<size_t>(n));
-                        if (sent == -1) {
-                            std::cerr << "send failed: "
-                                      << std::strerror(errno) << "\n";
-                            should_close = true;
-                            break;
-                        }
-                    } else if (n == 0) {
-                        std::cout << "客户端断开: fd=" << fd << "\n";
-                        should_close = true;
-                        break;
-                    } else {
-                        if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                            break;  // 数据读完了
-                        }
-                        if (errno == EINTR) {
-                            continue;
-                        }
-                        std::cerr << "recv failed: "
-                                  << std::strerror(errno) << "\n";
-                        should_close = true;
-                        break;
-                    }
-                }
+            conn->setMessageCallback([&connetions](const std::shared_ptr<Connection>& c)
+                {
 
-                if (should_close) {
-                    loop.del_fd(fd);   // 先摘除回调，防止后续事件
-                    ::close(fd);
                 }
-            });
+            )
+
+            conn->setCloseCallback([&connetions](const std::share_ptr<Connetcion>& c)
+            {
+                connetions.erase(c->fd());
+            })
+
+            connetions[client_fd] =  conn;
+            conn->start;
         }
     });
 
