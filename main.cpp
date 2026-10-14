@@ -76,7 +76,7 @@ int main() {
             })
 
             connetions[client_fd] =  conn;
-            conn->start;
+            conn->start();
         }
     });
 

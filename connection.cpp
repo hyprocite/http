@@ -8,16 +8,13 @@
 Connection::Connection(Eventloop* loop, int fd)
 :loop_(loop),
     fd_(fd),
-    closed_(false)
-{
-    
-}
+    closed_(false){}
 
 void Connection::start()
 {
     auto self = shared_from_this();
     loop_->add_fd(fd_,EPOLLIN,[self](int,uint32_t){self->on_readable();});
-}
+}t
 
 void Connection::on_readable()
 {
@@ -59,8 +56,14 @@ void Connection::on_readable()
 }
 
 void Connection::send(const std::string& data)
-{
-
+{   
+    if(closed_)return;
+    size_t total = 0;
+    while(total < data.size())
+    {
+        size_t n = ::send(fd_,)
+    }
+    //::send()
 }
 
 void Connection::close()
