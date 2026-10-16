@@ -1,5 +1,6 @@
 #include "connection.hpp"
 #include "event_loop.hpp"
+#include "bytes_buffer.hpp"
 #include <cerrno>
 #include <cstring>
 #include <iostream>
@@ -14,14 +15,15 @@ void Connection::start()
 {
     auto self = shared_from_this();
     loop_->add_fd(fd_,EPOLLIN,[self](int,uint32_t){self->on_readable();});
-}t
+}
 
 void Connection::on_readable()
 {
-    char temp[4096];
+    //char temp[4096];
+    bytes_buffer buffer(4096);
     while ((true))
     {
-        size_t n = ::recv(fd_,temp,sizeof(temp),0);
+        size_t n = ::recv(fd_,buffer,buffer.size(),0);
 
         if(n>0)
         {   
