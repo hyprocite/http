@@ -25,36 +25,44 @@ struct http11_header_parser
 
     void _extract_headers()
     {
-        std::string_view head = m_header;
-        size_t pos = head.find("\r\n");
-        m_headline = std::string(head.substr(0,pos));
-        while(pos !=std::string::npos)
-        {
-            pos+=2;
-           size_t next_pos = head.find("\r\n",pos);
-           size_t content_length = std::string::npos;
-           if(next_pos != std::string::npos)
-           {
-              content_length = next_pos - pos;
-           } 
-           std::string_view c_line = head.substr(pos,content_length);
-           size_t dot = head.find(": ",pos);
-           if(dot != std::string::npos)
-           {
-            std::string key(c_line.substr(0,dot));  //这里由于需要拷贝至map中所以必须使用string 而非string_view
-            std::string_view value = c_line.substr(dot+2);
-           //小写处理
-            std::transform(key.begin(), key.end(), key.begin(),
-            [](char c) { return std::tolower(static_cast<unsigned char>(c)); });
-           //
-            m_header_keys.insert_or_assign(std::move(key),value);
-           }
-           pos = next_pos;
+        std::string_view header = m_header;
+    size_t pos = header.find("\r\n");
+    if (pos == std::string_view::npos) return;
+    
+    // 1. 提取请求行
+    m_headline = std::string(header.substr(0, pos));
+    pos += 2; // 跳过请求行的 \r\n，来到第一个 Header 键值对的开头
 
+    // 2. 安全地循环解析每一行 Header
+    while (pos < header.size()) {
+        size_t next_pos = header.find("\r\n", pos);
+        
+        // 计算当前行的长度，如果找不到 \r\n，就说明这是最后一行，直接截取到末尾
+        size_t line_len = (next_pos == std::string_view::npos) ? std::string_view::npos : (next_pos - pos);
+        
+        std::string_view line = header.substr(pos, line_len);
+        size_t colon = line.find(": ");
+        if (colon != std::string_view::npos) {
+            std::string key(line.substr(0, colon));
+            std::string_view value = line.substr(colon + 2);
+            
+            // 转小写
+            std::transform(key.begin(), key.end(), key.begin(),
+                           [](char c) { return std::tolower(static_cast<unsigned char>(c)); });
+            m_header_keys.insert_or_assign(std::move(key), value);
         }
+        
+        // 【关键防御】：如果后面没有 \r\n 了，说明全部解析完毕，立刻打破循环
+        if (next_pos == std::string_view::npos) {
+            break;
+        }
+        
+        // 正常跳到下一行的开头（跳过当前行的 \r\n）
+        pos = next_pos + 2; 
 
 
     }
+}
     void _push_chunk(bytes_const_view chunk)
     {
         if(!m_header_finished)
@@ -90,6 +98,22 @@ struct http_request_parser
     std::map<std::string,std::string> &headers() noexcept {return m_head_parser.m_header_keys;}
     //获取body 
     std::string &body() {return m_head_parser.m_body;}
+
+    std::string url const()
+    {
+        auto &hl = m_head_parser.m_headline;
+        size_t p1 = hl.find(' ');
+        if(p1 == std::string::npos) return "/";
+        size_t p2 = hl.find(' ',p1+1);
+        return hl.substr(p1+1 , p2 - (p1+1));
+    }
+
+    std::string method() const
+    {
+        auto &hm = m_head_parser.m_headline;
+        size_t p = hm.find(' ');
+        return p == std::string::npos ? "GET" : hm.substr(0, p);
+    }
 
     size_t _extract_content_length()
     {
