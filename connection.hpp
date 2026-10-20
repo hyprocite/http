@@ -3,7 +3,7 @@
 #include <functional>
 #include <memory>
 #include <string>
-
+#include "bytes_buffer.hpp"
 class Eventloop;
 
 class Connection : public std::enable_shared_from_this<Connection>
@@ -42,9 +42,9 @@ class Connection : public std::enable_shared_from_this<Connection>
     Eventloop* loop_;
     int fd_;
     bool closed_;
-    std::string last_data_;
     MessageCallback message_cb_;
-    
+    bytes_buffer m_input_buffer{4096};
+    bytes_buffer m_output_buffer{4096};
     CloseCallback close_cb_;
 
 };

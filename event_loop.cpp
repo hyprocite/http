@@ -94,15 +94,17 @@ void Eventloop :: run()
     running_ = true;
     while(running_)
     {
-            int n = epoll_wait(epoll_fd_,events_.data(), static_cast<int>(events_.size()), -1);  //阻塞等待事件发生
+     int n = epoll_wait(epoll_fd_,events_.data(), static_cast<int>(events_.size()), -1);  //阻塞等待事件发生
 
-        if(n == -1)
+        if(n < 0)
         {
-         //   perror();
-        }
-        else if(n == 0)
-        {
+            if(errno == EINTR)
+            {
+                continue;
+            }
+            std::cerr << "epoll_wait failed:"<< std::strerror(errno) << "\n";
 
+         
         }
         else
         {
@@ -115,6 +117,10 @@ void Eventloop :: run()
                 if(it != callbacks_.end())
                 {
                     cb = it-> second; // 若不是
+                }
+                if(cb)
+                {
+                    cb(fd,ev);
                 }
             }
         }
