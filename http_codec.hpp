@@ -12,7 +12,7 @@ struct http11_header_parser
     std::string m_headline;
     std::string m_body;
     std::map<std::string,std::string> m_header_keys;
-    bool m_header_finished = false;;
+    bool m_header_finished = false;
 
     void reset_state() {
         m_header.clear();

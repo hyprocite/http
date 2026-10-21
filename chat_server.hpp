@@ -29,6 +29,10 @@ inline std::string serialize_response(const HttpResponse& r) {
 
 class ChatServer {
 public:
+    // 供外部（如 main 的连接表）挂接关闭通知，避免 close 回调被内部覆盖
+    using CloseHook = std::function<void(const std::shared_ptr<Connection>&)>;
+    void set_close_hook(CloseHook h) { close_hook_ = std::move(h); }
+
     ChatServer(Eventloop* loop):loop_(loop) {
         router_.get ("/",          [this](auto& q, auto& r){ handle_index(q, r); });
         router_.get ("/messages",  [this](auto& q, auto& r){ handle_messages(q, r); });
@@ -44,6 +48,7 @@ public:
     });
     c->setCloseCallback([this](const std::shared_ptr<Connection>& conn){
         on_close(conn);
+        if (close_hook_) close_hook_(conn);
     });
     c->start();
 }  // 设回调 + start
@@ -163,6 +168,7 @@ private:
 
     Router router_;
     Eventloop* loop_;
+    CloseHook close_hook_;
     std::mutex mu_;
     std::vector<Msg> msgs_;
     size_t next_id_ = 1;

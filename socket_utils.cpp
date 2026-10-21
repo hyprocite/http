@@ -27,7 +27,7 @@ int create_listen_socket(uint16_t port , int backlog)
     int listen_fd = socket(AF_INET, SOCK_STREAM, 0);   //监听socket
     if (listen_fd == -1) {
         std::cerr << "SOCKET CREATION FAILED\n";
-        return 1;
+        return -1;
     }
 
     //设置端口重用
@@ -42,14 +42,14 @@ int create_listen_socket(uint16_t port , int backlog)
      if (bind(listen_fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) < 0) {
         std::cerr << "BIND FAILED\n";
         close(listen_fd);
-        return 1;
+        return -1;
     }
     std::cout << "finish binding...\n";
 
-    if (listen(listen_fd, 3) < 0) {
+    if (listen(listen_fd, backlog) < 0) {
         std::cerr << "LISTEN FAILED\n";
         close(listen_fd);
-        return 1;
+        return -1;
     }
     
     if (set_nonblocking(listen_fd) == -1) {

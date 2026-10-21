@@ -91,6 +91,11 @@ void Connection::close()
     if(closed_) return;
     closed_ = true;
 
+    // 先吊住自己的生命周期：del_fd 会 erase 掉 EventLoop 里捕获的 self，
+    // 若此刻外部也已释放（如 main 的连接表已 erase），
+    // 后面的 close_cb_ 与 shared_from_this() 就会踩已析构对象。
+    auto self = shared_from_this();
+
     loop_->del_fd(fd_);
     ::close(fd_);
     fd_ = -1;

@@ -13,4 +13,4 @@ int create_listen_socket(uint16_t port, int backlog = 128);
 
 // 循环发送 len 字节，处理部分发送。
 // 返回实际发送的字节数；出错返回 -1。
-ssize_t send_all(int fd, const char* data, size_t len);
+//ssize_t send_all(int fd, const char* data, size_t len);
