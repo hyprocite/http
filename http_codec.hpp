@@ -5,6 +5,7 @@
 #include<map>
 #include<algorithm>
 #include<cctype>
+
 struct http11_header_parser
 {
     std::string m_header;
@@ -80,6 +81,9 @@ struct http11_header_parser
     }
 };
 
+
+
+
 struct http_request_parser
 {
     http11_header_parser m_head_parser;
@@ -99,7 +103,19 @@ struct http_request_parser
     //获取body 
     std::string &body() {return m_head_parser.m_body;}
 
-    std::string url const()
+    std::string query() const
+    {
+        auto& hl = m_head_parser.m_headline;
+        size_t p1 = hl.find(' ');
+        if (p1 == std::string::npos) return "";
+        size_t p2 = hl.find(' ', p1 + 1);
+        std::string target = hl.substr(p1 + 1, p2 - (p1 + 1));
+        size_t q = target.find('?');
+        return q == std::string::npos ? "" : target.substr(q + 1);
+    }
+    
+
+    std::string url () const
     {
         auto &hl = m_head_parser.m_headline;
         size_t p1 = hl.find(' ');

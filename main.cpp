@@ -1,19 +1,20 @@
 #include "event_loop.hpp"
 #include "socket_utils.hpp"
 #include "connection.hpp"
+#include "chat_server.hpp"
 
 #include <arpa/inet.h>
 #include <cerrno>
 #include <cstring>
 #include <iostream>
+#include <memory>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#include <vector>
-#include<unordered_map>
+#include <unordered_map>
+
 int main() {
-    // 1. 创建监听 socket（内部已 bind + listen + 非阻塞）
-    constexpr uint16_t kPort = 8080;
+    constexpr uint16_t kPort = 8081;
     int listen_fd = create_listen_socket(kPort);
     if (listen_fd == -1) {
         std::cerr << "create_listen_socket failed: "
@@ -22,35 +23,27 @@ int main() {
     }
     std::cout << "服务器启动，监听 " << kPort << " 端口...\n";
 
-    // 2. 创建事件循环
     Eventloop loop;
-    std::unordered_map<int,Connection> connetions;
-    // 3. 注册监听 socket 的回调：有新连接时循环 accept
-    loop.add_fd(listen_fd, EPOLLIN,
-                [&loop, listen_fd](int, uint32_t) {
+    ChatServer chat(&loop);
+
+    // 连接表：fd → shared_ptr<Connection>，保活用
+    std::unordered_map<int, std::shared_ptr<Connection>> connections;
+
+    loop.add_fd(listen_fd, EPOLLIN, [&](int, uint32_t) {
         while (true) {
             sockaddr_in client_addr{};
-            socklen_t client_len = sizeof(client_addr);
+            socklen_t   client_len = sizeof(client_addr);
             int client_fd = ::accept(listen_fd,
                                      reinterpret_cast<sockaddr*>(&client_addr),
                                      &client_len);
-
             if (client_fd == -1) {
-                if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    break;  // 没有更多连接
-                }
-                if (errno == EINTR) {
-                    continue;  // 被信号打断，重试
-                }
-                std::cerr << "accept failed: "
-                          << std::strerror(errno) << "\n";
+                if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+                if (errno == EINTR) continue;
+                std::cerr << "accept failed: " << std::strerror(errno) << "\n";
                 break;
             }
-
-            // 新连接设为非阻塞
             if (set_nonblocking(client_fd) == -1) {
-                std::cerr << "set_nonblocking failed: "
-                          << std::strerror(errno) << "\n";
+                std::cerr << "set_nonblocking failed: " << std::strerror(errno) << "\n";
                 ::close(client_fd);
                 continue;
             }
@@ -61,26 +54,24 @@ int main() {
                       << ntohs(client_addr.sin_port)
                       << " (fd=" << client_fd << ")\n";
 
-            // 为新客户端注册回调
-           auto conn = std::make_shared<Connection>(&loop, client_fd);
+            auto conn = std::make_shared<Connection>(&loop, client_fd);
 
-            conn->setMessageCallback([&connetions](const std::shared_ptr<Connection>& c)
-                {
+            // 关闭时从连接表移除。注意：close() 里 fd_ 会置 -1，
+            // 所以捕获原 fd 值，别用 c->fd()
+            int fd_copy = client_fd;
+            conn->setCloseCallback([&connections, fd_copy](
+                    const std::shared_ptr<Connection>& /*c*/) {
+                connections.erase(fd_copy);
+                std::cout << "连接关闭 fd=" << fd_copy << "\n";
+            });
 
-                }
-            )
+            connections[client_fd] = conn;
 
-            conn->setCloseCallback([&connetions](const std::share_ptr<Connetcion>& c)
-            {
-                connetions.erase(c->fd());
-            })
-
-            connetions[client_fd] =  conn;
-            conn->start();
+            // ChatServer 内部会 setMessageCallback / setCloseCallback / start
+            chat.on_new_connection(conn);
         }
     });
 
-    // 4. 运行事件循环（阻塞直到 stop() 被调用）
     loop.run();
 
     ::close(listen_fd);
