@@ -15,7 +15,7 @@ struct bytes_view
     char* end() const noexcept{return m_data + m_size;}
     size_t size() const noexcept{ return m_size;}
 
-    bytes_view subspan(size_t start, size_t len = static_cast<size_t>(-1)) const
+    bytes_view subspan (size_t start, size_t len = static_cast<size_t>(-1)) const
     {
         if(start > m_size) throw "error,over len";
         if(start + len > m_size) len = m_size - start;
@@ -65,7 +65,7 @@ struct bytes_buffer
     char* data() noexcept{return m_data.data();}
     char const *data()const noexcept {return m_data.data();}
     bool empty()const noexcept{return m_data.empty();}
-    void resize(size_t n) noexcept{return m_data.resize(n);}
+    void resize(size_t n) {return m_data.resize(n);}
     void clear()noexcept{return m_data.clear();}
 
     void append(bytes_const_view chunk) {

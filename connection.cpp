@@ -1,107 +1,209 @@
+
 #include "connection.hpp"
 #include "event_loop.hpp"
 
 #include <cerrno>
 #include <cstring>
 #include <iostream>
+#include <stdexcept>
+
 #include <sys/socket.h>
 #include <unistd.h>
+
 Connection::Connection(Eventloop* loop, int fd)
-:loop_(loop),
-    fd_(fd),
-    closed_(false){}
+    : loop_(loop), fd_(fd) {
+    if (!loop_ || fd_ < 0) {
+        throw std::invalid_argument("invalid Connection arguments");
+    }
+}
 
-void Connection::start()
-{
+Connection::~Connection() {
+    // 正常路径应通过 close() 清理。
+    // 析构函数提供最后一道 fd 资源保护。
+    if (fd_ >= 0) {
+        if (registered_ && loop_) {
+            loop_->del_fd(fd_);
+        }
+        ::close(fd_);
+        fd_ = -1;
+    }
+}
+
+bool Connection::start() {
+    if (closed_ || fd_ < 0 || registered_) return false;
+
     auto self = shared_from_this();
-    loop_->add_fd(fd_,EPOLLIN,[self](int,uint32_t){self->on_readable();});
-}
 
-void Connection::on_readable()
-{   
-    char temp[4096];
-    while ((true))
-    {   
-        ssize_t n = ::recv(fd_,temp,sizeof(temp),0);
-
-        if(n>0)
-        {   
-          //  last_data_.assign(temp, static_cast<size_t>(n));
-            m_input_buffer.append(bytes_const_view{temp,static_cast<size_t>(n)});
-            if(message_cb_)
-            {
-                message_cb_(shared_from_this()); //在此耦合buffer中的数据和http解析逻辑
-            }
-            if(closed_) return;
-            continue;
-        }
-        else if(n ==0 )
-        {
-            close();
-            return;
-        }
-        else
-        {
-             if (errno == EAGAIN || errno == EWOULDBLOCK) 
-             {              
-                break;  // 数据读完了
-            }
-            if (errno == EINTR) 
-            {
-                            continue;
-            }
-            close();
-            return;
-        }
+    if (!loop_->add_fd(fd_, EPOLLIN | EPOLLRDHUP,
+        [self](int, uint32_t events) {
+            self->on_event(events);
+        })) {
+        return false;
     }
-    
-}
 
-void Connection::send(const std::string& data)
-{
-    if (closed_) return;
-    m_output_buffer.append(std::string_view{data.data(), data.size()});
-    try_flush_output();
-}
-
-bool Connection::try_flush_output()
-{
-    while (!m_output_buffer.empty())
-    {
-        auto [p, sz] = m_output_buffer.span();
-        ssize_t n = ::send(fd_, p, sz, 0);
-        if (n > 0) { m_output_buffer.consume(static_cast<size_t>(n)); continue; }
-        if (n == 0) { close(); return false; }
-        if (errno == EINTR) continue;
-        if (errno == EAGAIN || errno == EWOULDBLOCK)
-        {
-            loop_->mod_fd(fd_, EPOLLIN | EPOLLOUT);   // 等可写
-            return false;
-        }
-        close(); return false;
-    }
-    loop_->mod_fd(fd_, EPOLLIN);                       // 发完，取消 EPOLLOUT
+    registered_ = true;
     return true;
 }
 
-void Connection::on_writable() { if (!closed_) try_flush_output(); }
+void Connection::on_event(uint32_t events) {
+    if (closed_) return;
 
-void Connection::close()
-{   
-    if(closed_) return;
+    if (events & EPOLLERR) {
+        close();
+        return;
+    }
+
+    if (events & EPOLLIN) {
+        on_readable();
+    }
+
+    if (closed_) return;
+
+    if (events & EPOLLOUT) {
+        on_writable();
+    }
+
+    if (closed_) return;
+
+    // 如果有可读数据，优先让 on_readable() 读到 EOF。
+    // 否则 HUP/RDHUP 说明对端已关闭或半关闭连接。
+    if ((events & (EPOLLHUP | EPOLLRDHUP)) &&
+        !(events & EPOLLIN)) {
+        close();
+    }
+}
+
+void Connection::on_readable() {
+    if (closed_) return;
+
+    char temp[4096];
+
+    while (true) {
+        const ssize_t n = ::recv(fd_, temp, sizeof(temp), 0);
+
+        if (n > 0) {
+            input_buffer_.append(
+                std::string_view(temp, static_cast<size_t>(n))
+            );
+
+            if (message_cb_) {
+                message_cb_(shared_from_this());
+            }
+
+            if (closed_) return;
+            continue;
+        }
+
+        if (n == 0) {
+            close();
+            return;
+        }
+
+        if (errno == EINTR) continue;
+
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            break;
+        }
+
+        std::cerr << "recv failed: " << std::strerror(errno) << '\n';
+        close();
+        return;
+    }
+}
+
+void Connection::send(const std::string& data, bool close_after_send) {
+    if (closed_) return;
+
+    output_buffer_.append(data);
+
+    if (close_after_send) {
+        close_after_write_ = true;
+    }
+
+    flush_output();
+}
+
+void Connection::on_writable() {
+    if (!closed_) flush_output();
+}
+
+void Connection::flush_output() {
+    while (!closed_ && output_offset_ < output_buffer_.size()) {
+        const char* data = output_buffer_.data() + output_offset_;
+        const size_t remaining = output_buffer_.size() - output_offset_;
+
+        const ssize_t n = ::send(fd_, data, remaining, MSG_NOSIGNAL);
+
+        if (n > 0) {
+            output_offset_ += static_cast<size_t>(n);
+            continue;
+        }
+
+        if (n < 0 && errno == EINTR) continue;
+
+        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+            update_interest();
+            return;
+        }
+
+        std::cerr << "send failed: " << std::strerror(errno) << '\n';
+        close();
+        return;
+    }
+
+    if (closed_) return;
+
+    output_buffer_.clear();
+    output_offset_ = 0;
+
+    if (close_after_write_) {
+        close();
+        return;
+    }
+
+    update_interest();
+}
+
+void Connection::update_interest() {
+    if (closed_ || !registered_) return;
+
+    uint32_t events = EPOLLIN | EPOLLRDHUP;
+
+    if (output_offset_ < output_buffer_.size()) {
+        events |= EPOLLOUT;
+    }
+
+    if (!loop_->mod_fd(fd_, events)) {
+        std::cerr << "failed to update epoll interest for fd="
+                  << fd_ << '\n';
+        close();
+    }
+}
+
+void Connection::close() {
+    if (closed_) return;
+
     closed_ = true;
 
-    // 先吊住自己的生命周期：del_fd 会 erase 掉 EventLoop 里捕获的 self，
-    // 若此刻外部也已释放（如 main 的连接表已 erase），
-    // 后面的 close_cb_ 与 shared_from_this() 就会踩已析构对象。
-    auto self = shared_from_this();
+    // 先从 epoll 注销，防止继续收到该 fd 的事件。
+    if (registered_ && loop_) {
+        loop_->del_fd(fd_);
+        registered_ = false;
+    }
 
-    loop_->del_fd(fd_);
-    ::close(fd_);
+    const int old_fd = fd_;
     fd_ = -1;
 
-    if(close_cb_)
-    {
-        close_cb_(shared_from_this());
+    if (old_fd >= 0) {
+        ::close(old_fd);
+    }
+
+    input_buffer_.clear();
+    output_buffer_.clear();
+    output_offset_ = 0;
+
+    if (close_cb_) {
+        auto self = shared_from_this();
+        close_cb_(self);
     }
 }

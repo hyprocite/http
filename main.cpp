@@ -56,17 +56,18 @@ int main() {
 
             auto conn = std::make_shared<Connection>(&loop, client_fd);
 
+
+             connections[client_fd] = conn;
+
             // 关闭时从连接表移除。注意：close() 里 fd_ 会置 -1，
             // 所以捕获原 fd 值，别用 c->fd()
             int fd_copy = client_fd;
-            chat.set_close_hook([&connections, fd_copy](
-                    const std::shared_ptr<Connection>& /*c*/) {
+            chat.set_close_hook([&connections, fd_copy](const std::shared_ptr<Connection>& /*c*/) {
                 connections.erase(fd_copy);
                 std::cout << "连接关闭 fd=" << fd_copy << "\n";
             });
 
-            connections[client_fd] = conn;
-
+           
             // ChatServer 内部会 setMessageCallback / setCloseCallback / start
             chat.on_new_connection(conn);
         }
