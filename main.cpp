@@ -29,6 +29,17 @@ int main() {
     // 连接表：fd → shared_ptr<Connection>，保活用
     std::unordered_map<int, std::shared_ptr<Connection>> connections;
 
+    chat.set_close_hook([&connections](const std::shared_ptr<Connection>& c) {
+        for(auto conn : connections)
+        {
+            if(conn.second == c)
+            {
+                std::cout << "连接关闭 fd=" << conn.first << "\n";
+                connections.erase(conn.first);
+                break;
+            } 
+        }
+        });
     loop.add_fd(listen_fd, EPOLLIN, [&](int, uint32_t) {
         while (true) {
             sockaddr_in client_addr{};
@@ -62,10 +73,7 @@ int main() {
             // 关闭时从连接表移除。注意：close() 里 fd_ 会置 -1，
             // 所以捕获原 fd 值，别用 c->fd()
             int fd_copy = client_fd;
-            chat.set_close_hook([&connections, fd_copy](const std::shared_ptr<Connection>& /*c*/) {
-                connections.erase(fd_copy);
-                std::cout << "连接关闭 fd=" << fd_copy << "\n";
-            });
+
 
            
             // ChatServer 内部会 setMessageCallback / setCloseCallback / start
