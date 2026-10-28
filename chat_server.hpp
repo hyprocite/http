@@ -51,8 +51,7 @@ public:
         if (close_hook_) close_hook_(conn);
     });
     c->start();
-}  // 设回调 + start
-// connection.hpp（public 区）
+}  
 
 
 
@@ -60,23 +59,32 @@ public:
 
 private:
     void on_bytes(const std::shared_ptr<Connection>& c) {
-        auto& parser = parser_of(c);
-        // 简化版：一次喂完，假设单请求（先跑通）
-        parser.push_chunk(c->input_buffer().const_span());
-        if (!parser.request_finished()) return;
-
-        HttpResponse resp;
-        router_.dispath(parser, resp);
-
-        c->input_buffer().clear();      // 简化：清空（pipeline 后续补）
-        parser.reset_state();
-
-        if (resp.status == 200 || resp.status == 302 || resp.status == 404) {
-            c->send(serialize_response(resp));
-        } else {
-            c->send(serialize_response(resp));
+        auto& parser = parser_of(c);   
+        while(!c->input_buffer().empty()){
+            size_t n = parser.push_chunk(c->input_buffer().const_span());
+            c->input_buffer().consume(n);
+          if (parser.has_error()) 
+          {
+            c->close();
+            return;    
+          }
+          if(parser.request_finished()){
+                HttpResponse resp;
+                router_.dispath(parser, resp);
+                resp.keep_alive = parser.keep_alive();
+                parser.reset_state();
+                c->send(serialize_response(resp),!resp.keep_alive);
+                if (c->closed() || !resp.keep_alive) return;
+            }
+          else{
+                if(n != 0 && !c->input_buffer().empty()) continue;
+                else    //这里即缓冲区空了的情况 
+                    {
+                            return;
+                    }
+            }   
+           
         }
-        if (!resp.keep_alive) c->close();
     }
 
     void handle_index(http_request_parser&, HttpResponse& r) {
