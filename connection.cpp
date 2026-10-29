@@ -40,14 +40,20 @@ bool Connection::start() {
         })) {
         return false;
     }
-
     registered_ = true;
-    return true;
+    if(!self->closed_ && output_offset_ < output_buffer_.size())
+    {
+        self->flush_output();
+    }
+
+   if(closed_)
+    return false;
+    else return true;
 }
 
 void Connection::on_event(uint32_t events) {
     if (closed_) return;
-
+//events 可能同时包含多个事件，所以需要按位与
     if (events & EPOLLERR) {
         close();
         return;
@@ -69,7 +75,7 @@ void Connection::on_event(uint32_t events) {
     // 否则 HUP/RDHUP 说明对端已关闭或半关闭连接。
     if ((events & (EPOLLHUP | EPOLLRDHUP)) &&
         !(events & EPOLLIN)) {
-        close();
+        on_readable();
     }
 }
 
@@ -95,8 +101,15 @@ void Connection::on_readable() {
         }
 
         if (n == 0) {
-            close();
-            return;
+            read_eof_ = true;
+            if(output_offset_ < output_buffer_.size()) 
+            {   
+                update_interest();
+                return;
+            }
+            else{
+                close();
+                return;}
         }
 
         if (errno == EINTR) continue;
@@ -113,7 +126,7 @@ void Connection::on_readable() {
 
 void Connection::send(const std::string& data, bool close_after_send) {
     if (closed_) return;
-
+ //砍掉了输出缓冲区
     output_buffer_.append(data);
 
     if (close_after_send) {
@@ -156,7 +169,7 @@ void Connection::flush_output() {
     output_buffer_.clear();
     output_offset_ = 0;
 
-    if (close_after_write_) {
+    if (close_after_write_ || read_eof_) {
         close();
         return;
     }
@@ -166,11 +179,13 @@ void Connection::flush_output() {
 
 void Connection::update_interest() {
     if (closed_ || !registered_) return;
-
-    uint32_t events = EPOLLIN | EPOLLRDHUP;
-
+    uint32_t events = 0;
+    if(!read_eof_)
+    {
+        events |= (EPOLLIN | EPOLLRDHUP);
+    }
     if (output_offset_ < output_buffer_.size()) {
-        events |= EPOLLOUT;
+            events |= EPOLLOUT;
     }
 
     if (!loop_->mod_fd(fd_, events)) {
