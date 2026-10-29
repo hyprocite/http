@@ -50,7 +50,10 @@ public:
         on_close(conn);
         if (close_hook_) close_hook_(conn);
     });
-    c->start();
+    if(!c->start())
+    {   
+        c->close();
+    }
 }  
 
 
@@ -71,7 +74,7 @@ private:
           if(parser.request_finished()){
                 HttpResponse resp;
                 router_.dispath(parser, resp);
-                resp.keep_alive = parser.keep_alive();
+                resp.keep_alive = parser.keep_alive(); //关闭
                 parser.reset_state();
                 c->send(serialize_response(resp),!resp.keep_alive);
                 if (c->closed() || !resp.keep_alive) return;
