@@ -80,7 +80,7 @@ void Connection::on_event(uint32_t events) {
 }
 
 void Connection::on_readable() {
-    if (closed_) return;
+    if (closed_ || read_eof_ || close_after_write_) return;
 
     char temp[4096];
 
@@ -96,7 +96,7 @@ void Connection::on_readable() {
                 message_cb_(shared_from_this());
             }
 
-            if (closed_) return;
+            if (closed_ || close_after_write_) return;
             continue;
         }
 
@@ -180,7 +180,7 @@ void Connection::flush_output() {
 void Connection::update_interest() {
     if (closed_ || !registered_) return;
     uint32_t events = 0;
-    if(!read_eof_)
+    if(!read_eof_ && !close_after_write_)
     {
         events |= (EPOLLIN | EPOLLRDHUP);
     }
@@ -198,7 +198,7 @@ void Connection::update_interest() {
 void Connection::close() {
     if (closed_) return;
 
-    closed_ = true;
+    closed_ = true;      
 
     // 先从 epoll 注销，防止继续收到该 fd 的事件。
     if (registered_ && loop_) {
