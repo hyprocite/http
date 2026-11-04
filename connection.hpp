@@ -60,6 +60,7 @@ private:
     bool closed_ = false;
     bool close_after_write_ = false;
     bool registered_ = false;
+    bool read_eof_ =false;  
 
     bytes_buffer input_buffer_;
     std::string output_buffer_;

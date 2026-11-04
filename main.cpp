@@ -24,7 +24,8 @@ int main() {
     std::cout << "服务器启动，监听 " << kPort << " 端口...\n";
 
     Eventloop loop;
-    ChatServer chat(&loop);
+    MessageStore messages;
+    ChatServer chat(messages);
 
     // 连接表：fd → shared_ptr<Connection>，保活用
     std::unordered_map<int, std::shared_ptr<Connection>> connections;
@@ -72,7 +73,6 @@ int main() {
 
             // 关闭时从连接表移除。注意：close() 里 fd_ 会置 -1，
             // 所以捕获原 fd 值，别用 c->fd()
-            int fd_copy = client_fd;
 
 
            

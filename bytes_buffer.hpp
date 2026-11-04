@@ -18,7 +18,7 @@ struct bytes_view
     bytes_view subspan (size_t start, size_t len = static_cast<size_t>(-1)) const
     {
         if(start > m_size) throw "error,over len";
-        if(start + len > m_size) len = m_size - start;
+        if( len > m_size- start) len = m_size - start;
         return {m_data + start ,len};
     
 
@@ -43,7 +43,7 @@ struct bytes_const_view
     bytes_const_view subspan(size_t start, size_t len = static_cast<size_t>(-1)) const
     {
         if(start > m_size) throw "error,over len";
-        if(start + len > m_size) len = m_size - start;
+        if( len > m_size -start ) len = m_size - start;
         return {m_data + start ,len};
     
 
@@ -78,10 +78,15 @@ struct bytes_buffer
 
     void consume(size_t n )
     {
-        if(n > m_data.size()) m_data.clear();
+        if(n > m_data.size()) 
+        {
+           // m_data.clear();
+           //对非法长度抛出异常 
+           throw std::out_of_range("bytes_buffer::consume");
+        }
         else
         {
-            m_data.erase(m_data.begin(),m_data.begin()+ static_cast<std::ptrdiff_t>(n));
+            m_data.erase(m_data.begin(),m_data.begin()+ static_cast<std::ptrdiff_t>(n)); 
         }
     }
 

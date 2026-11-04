@@ -33,7 +33,8 @@ struct http11_header_parser {
     static std::string trim(std::string_view value) {
         while (!value.empty() &&
                (value.front() == ' ' || value.front() == '\t')) {
-            value.remove_prefix(1);
+                //remove_prefix从头节点起删除
+                value.remove_prefix(1);
         }
 
         while (!value.empty() &&
@@ -55,14 +56,14 @@ struct http11_header_parser {
 
     void _extract_headers() {
         const size_t first_end = m_header.find("\r\n");
-
+        //非法，无首行
         if (first_end == std::string::npos) {
             m_valid = false;
             return;
         }
 
         m_headline = m_header.substr(0, first_end);
-
+        //只有首行，非法
         if (m_headline.empty()) {
             m_valid = false;
             return;
@@ -72,7 +73,6 @@ struct http11_header_parser {
 
         while (pos < m_header.size()) {
             size_t end = m_header.find("\r\n", pos);
-
             if (end == std::string::npos) {
                 end = m_header.size();
             }
@@ -112,7 +112,7 @@ struct http11_header_parser {
             }
 
             key = lowercase(std::move(key));
-
+            //用trim修掉空格而不是查找到时候查找": "
             const std::string value =
                 trim(line.substr(colon + 1));
 
