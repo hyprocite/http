@@ -39,7 +39,15 @@ private:
     }
 
     void handle_send(http_request_parser& q, HttpResponse& r) {
-        if (!q.body().empty()) store_.append(q.body());
+        if (!q.body().empty()) 
+        {
+            if(!store_.append(q.body()))
+            {
+                r.status = 413;
+                r.reason = "Message length limited";
+                return;
+            }
+        }
         r.status = 302;
         r.reason = "Found";
         r.headers["Location"] = "/";

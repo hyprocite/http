@@ -67,7 +67,7 @@ struct bytes_buffer
     bool empty()const noexcept{return m_data.empty();}
     void resize(size_t n) {return m_data.resize(n);}
     void clear()noexcept{return m_data.clear();}
-    size_t const size()noexcept  {return m_data.size();}
+    size_t size() const  noexcept  {return m_data.size();}
     void append(bytes_const_view chunk) {
         m_data.insert(m_data.end(), chunk.begin(), chunk.end());
     }
