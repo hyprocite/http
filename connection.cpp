@@ -127,7 +127,13 @@ void Connection::on_readable() {
 void Connection::send(const std::string& data, bool close_after_send) {
     if (closed_) return;
  //砍掉了输出缓冲区
+    if( data.size() <= BUFFER_SIZE_LIMITED && output_buffer_.size() <= BUFFER_SIZE_LIMITED -data.size())  
     output_buffer_.append(data);
+    else 
+    {
+        close();
+        return;
+    }
 
     if (close_after_send) {
         close_after_write_ = true;
@@ -155,6 +161,8 @@ void Connection::flush_output() {
         if (n < 0 && errno == EINTR) continue;
 
         if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+            output_buffer_.consume(output_offset_);
+            output_offset_ = 0;
             update_interest();
             return;
         }
@@ -166,7 +174,7 @@ void Connection::flush_output() {
 
     if (closed_) return;
 
-    output_buffer_.clear();
+    output_buffer_.consume(output_offset_);
     output_offset_ = 0;
 
     if (close_after_write_ || read_eof_) {

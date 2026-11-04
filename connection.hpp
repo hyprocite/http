@@ -63,7 +63,8 @@ private:
     bool read_eof_ =false;  
 
     bytes_buffer input_buffer_;
-    std::string output_buffer_;
+    bytes_buffer  output_buffer_;
+    size_t BUFFER_SIZE_LIMITED = 4194304;
     size_t output_offset_ = 0;
 
     MessageCallback message_cb_;
